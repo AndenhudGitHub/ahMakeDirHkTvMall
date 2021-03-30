@@ -1,0 +1,21 @@
+{
+    "WorkPath":"F:\\TEST_TO_ROGER\\測試",
+    "NewWorkPath":"F:\\TEST2",
+    "SizeTablePath":"\\192.168.1.2\\Shopee\\★上架需求_商品照&尺寸表&上架資料表\\★尺寸表\\Sizelist_1000X1000",
+    "Leve3Dir"   : "OUT",
+    "Logo":"LOGO_1000X1000.png",
+    "Story":"story.jpg",
+    "BeginCount" : "10001",
+    "MaxCount" : "10070",
+    "Copy1"  : "B",
+    "Copy2"  : "M",
+    "Copy3"  : "O",
+    "Copy1Max"  : 6,
+    "GroupDir"  : "Group",
+    "XXLDir"    : "XXL",
+    "XXLFile"   : "XXL.txt",
+    "WaterX"    : "500",
+    "WaterY"    : "500",
+    "limitKb"   : "200",
+    "1000A1040Blank" : "1000x1040_blank.jpg"
+}
