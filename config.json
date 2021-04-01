@@ -1,8 +1,8 @@
 {
-    "WorkPath":"F:\\春夏_AJD女內褲",
-    "SizeTablePath":"F:\\HkTvMall\\尺寸表",
+    "WorkPath":"F:\\AJD",
+    "SizeTablePath":"\\anden_backup2\\Shopee\\★上架需求_商品照&尺寸表&上架資料表\\★尺寸表\\Sizelist_1000X1000",
     "TryTablePath":"\\192.168.1.2\\共用資料夾\\......HKTV Mall\\HKTVmall商品上架\\TRYON",
-    "BigBannerPath":"F:\\HkTvMall\\BANNER圖",
+    "BigBannerPath":"F:\\HkTvMall\\",
     "GetDir":"SMALL",
     "Leve3Dir"   : "HKTV",
     "BlankImg"   : "250X250_ORG.jpg",

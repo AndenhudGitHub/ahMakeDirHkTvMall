@@ -51,7 +51,7 @@ func main() {
 	//尺寸表路徑 (用款號組成)
 	var SizeTablePath = strings.Replace(config.SizeTablePath, "\\", "\\\\", -1)
 	//大B圖路徑 (用款號組成)
-	// var BigBannerPath = strings.Replace(config.BigBannerPath, "\\", "\\\\", -1)
+	var BigBannerPath = strings.Replace(config.BigBannerPath, "\\", "\\\\", -1)
 	//試穿表路徑 (用料號前兩個字)
 	var TryTablePath = strings.Replace(config.TryTablePath, "\\", "\\\\", -1)
 	//試穿表對應圖片
@@ -95,14 +95,6 @@ func main() {
 				CopyFile(sizePicPath, tvMallChildDir+string(os.PathSeparator)+"尺寸表.jpg")
 			}
 
-			//大B圖路徑
-			// bigPicPath := BigBannerPath + string(os.PathSeparator) + goodsSn[0:2] + goodsSn[4:8] + ".jpg"
-			// if _, err := os.Stat(bigPicPath); os.IsNotExist(err) {
-			// 	bigPicInfoArray = append(bigPicInfoArray, bigPicPath)
-			// } else {
-			// 	CopyFile(bigPicPath, smallPath+string(os.PathSeparator)+goodsSn[0:2]+goodsSn[4:8]+".jpg")
-			// }
-
 			//試穿表路徑
 			tryPicPath := TryTablePath + string(os.PathSeparator) + twoCode
 			if _, err := os.Stat(tryPicPath); os.IsNotExist(err) {
@@ -113,6 +105,8 @@ func main() {
 
 			//掃描小圖 資料夾
 			smallPicDirArray := scandir(smallPath)
+			//大B圖路徑 資料夾
+			BigBannerDirArray := scandir(BigBannerPath)
 			//fmt.Println(smallPicDirArray)
 			for index, picDir := range smallPicDirArray {
 				orgSmallPicPath := smallPath + string(os.PathSeparator) + picDir
@@ -126,6 +120,13 @@ func main() {
 					needResize = append(needResize, CopySmallPicPath)
 				}
 			}
+			if len(BigBannerDirArray) > 0 {
+				for index, bannerPic := range BigBannerDirArray {
+					orgBannerPicPath := BigBannerPath + string(os.PathSeparator) + bannerPic
+					CopyBannerPicPath := tvMallChildDir + string(os.PathSeparator) + "BANNER" + strconv.Itoa(index+1) + ".jpg"
+					CopyFile(orgBannerPicPath, CopyBannerPicPath)
+				}
+			}
 		}
 	}
 
@@ -133,9 +134,36 @@ func main() {
 	if len(needResize) > 0 {
 		bgImg := config.BlankImg
 		for _, resizeImgPath := range needResize {
-			fmt.Println(resizeImgPath)
-			resizeImg(resizeImgPath, resizeImgPath, 250)
+			//fmt.Println(resizeImgPath)
+			other := resizeImgPath + "RESIZE"
+			resizeImg(resizeImgPath, other, 250)
+			moveFile(other, resizeImgPath)
 			meragePic(bgImg, resizeImgPath, resizeImgPath)
+		}
+	}
+
+	//沒找到的尺寸表
+	if len(sizePicInfoArray) > 0 {
+		var txtString string
+		for _, errorMsg := range sizePicInfoArray {
+			txtString = txtString + errorMsg
+		}
+		content := []byte(txtString)
+		err := ioutil.WriteFile("找不到的尺寸表.txt", content, 0666)
+		if err != nil {
+			fmt.Println("ioutil WriteFile error: ", err)
+		}
+	}
+	//沒找到的試穿表
+	if len(tryPicInfoArray) > 0 {
+		var txtString string
+		for _, errorMsg := range tryPicInfoArray {
+			txtString = txtString + errorMsg
+		}
+		content := []byte(txtString)
+		err := ioutil.WriteFile("找不到的試穿表.txt", content, 0666)
+		if err != nil {
+			fmt.Println("ioutil WriteFile error: ", err)
 		}
 	}
 }
