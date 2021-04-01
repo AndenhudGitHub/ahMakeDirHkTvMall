@@ -1,9 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
+	"image/color"
+	"image/jpeg"
 	"io"
 	"io/ioutil"
 	"log"
@@ -11,503 +12,132 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/nfnt/resize"
+	gim "github.com/ozankasikci/go-image-merge"
 )
+
+type config struct {
+	WorkPath      string                 `json:"WorkPath"`
+	SizeTablePath string                 `json:"SizeTablePath"`
+	TryTablePath  string                 `json:"TryTablePath"`
+	BigBannerPath string                 `json:"BigBannerPath"`
+	GetDir        string                 `json:"GetDir"`
+	Leve3Dir      string                 `json:"Leve3Dir"`
+	BlankImg      string                 `json:"BlankImg"`
+	TryMapping    map[string]interface{} `json:"TryMapping"`
+}
 
 func main() {
 
-	fmt.Print("請輸入新舊，0舊 1新:")
-	var isNew string
-	fmt.Scanln(&isNew)
-	runType, err := strconv.Atoi(isNew)
-	//尺寸表路徑
+	//設定擋路徑
 	data, err := ioutil.ReadFile("config.json")
 	if err != nil {
 		fmt.Print(err)
 		os.Exit(3)
 	}
-
-	type config struct {
-		WorkPath      string `json:"WorkPath"`
-		NewWorkPath   string `json:"NewWorkPath"`
-		SizeTablePath string `json:"SizeTablePath"`
-		Leve3Dir      string `json:"Leve3Dir"`
-		Logo          string `json:"Logo"`
-		Story         string `json:"Story"`
-		BeginCount    string `json:"BeginCount"`
-		MaxCount      string `json:"MaxCount"`
-		Copy1         string `json:"copy1"`
-		Copy2         string `json:"Copy2"`
-		Copy3         string `json:"Copy3"`
-		Copy1Max      int    `json:"Copy1Max"`
-		GroupDir      string `json:"GroupDir"`
-		XXLDir        string `json:"XXLDir"`
-		XXLFile       string `json:"XXLFile"`
-	}
-	var obj config
-	err = json.Unmarshal(data, &obj)
+	//讀取設定檔
+	var config config
+	err = json.Unmarshal(data, &config)
 	if err != nil {
 		fmt.Println("error:", err)
 		os.Exit(3)
 	}
-	DirPath := ""
-	mkOutOrg := ""
-	XXLFilePath := ""
-	if runType == 0 {
-		DirPath = strings.Replace(obj.WorkPath, "\\", "\\\\", -1)
-		//複製到的資料夾
-		mkOutOrg = obj.WorkPath + string(os.PathSeparator) + obj.Leve3Dir
-		mkDir(mkOutOrg)
-		XXLFilePath = XXLFilePath + obj.WorkPath + string(os.PathSeparator) + obj.XXLFile
-	} else {
-		DirPath = strings.Replace(obj.NewWorkPath+string(os.PathSeparator)+obj.Leve3Dir, "\\", "\\\\", -1)
-		XXLFilePath = strings.Replace(obj.NewWorkPath+string(os.PathSeparator)+obj.Leve3Dir+string(os.PathSeparator)+obj.XXLFile, "\\", "\\\\", -1)
-	}
-	//XXL txt內文字
-	XXLArray := readXXlFile(XXLFilePath)
-	SpecPath := strings.Replace(obj.SizeTablePath, "\\", "\\\\", -1)
+
+	//創建資料夾路徑
+	var mkOutOrg = config.WorkPath + string(os.PathSeparator) + config.Leve3Dir
+	//取代反斜線
+	var DirPath = strings.Replace(config.WorkPath, "\\", "\\\\", -1)
+	//尺寸表路徑 (用款號組成)
+	var SizeTablePath = strings.Replace(config.SizeTablePath, "\\", "\\\\", -1)
+	//大B圖路徑 (用款號組成)
+	// var BigBannerPath = strings.Replace(config.BigBannerPath, "\\", "\\\\", -1)
+	//試穿表路徑 (用料號前兩個字)
+	var TryTablePath = strings.Replace(config.TryTablePath, "\\", "\\\\", -1)
+	//試穿表對應圖片
+	var TryMap = config.TryMapping
+	//小圖路徑
+	var SmallPath = config.GetDir
+
+	//創建資料夾
+	mkDir(mkOutOrg)
+
 	//掃描DIR
 	dirArr := scandir(DirPath)
-	//fmt.Println(dirArr)
-	//LOGO路徑
-	//LogoPath := obj.SizeTablePath + string(os.PathSeparator) + obj.Logo
-	BeginCount, _ := strconv.Atoi(obj.BeginCount)
-	MaxCount, _ := strconv.Atoi(obj.MaxCount)
-	imageIndex := 1
-	group := 1
-	var failSizeTable []string
-	var needFillArr []string
-	var keepGoodsSn [][]string
-	var test1Darray []string
-	var xxlTest1DArray []string
-	var needToSize1000T1040 []string
-	nowString := ""
-
+	//需要縮放圖片位子陣列
+	var needResize []string
+	var sizePicInfoArray []string
+	// var bigPicInfoArray []string
+	var tryPicInfoArray []string
 	for _, fileDir := range dirArr {
-		if runType == 0 {
 
-			level1Dir := obj.WorkPath + string(os.PathSeparator) + fileDir
-			if strings.Index(fileDir, ".txt") != -1 {
-				continue
-			}
-			mkOut := mkOutOrg + string(os.PathSeparator) + obj.GroupDir + strconv.Itoa(group)
-			mkDir(mkOut)
-			inSideImageArr := scandir(level1Dir)
-			copyTo1 := ""
-			copyTo2 := ""
-			copyTo3 := ""
-			copyToStory := ""
-			imageIndex2 := 1
-			level2ImgDir := ""
-			indexNext := 0
-			hasA := false
-			for _, fileImage := range inSideImageArr {
-				if fileImage == "A.jpg" || fileImage == "B.jpg" || fileImage == "C.jpg" || fileImage == "a.jpg" || fileImage == "b.jpg" || fileImage == "c.jpg" {
-					hasA = true
-				}
-			}
-			for _, fileImage := range inSideImageArr {
-				if strings.Index(fileImage, ".jpg") > -1 {
-					level2ImgDir = level1Dir + string(os.PathSeparator) + fileImage
+		//切割資料夾變成陣列
+		dirCutArr := strings.Split(fileDir, "_")
+		if len(dirCutArr) == 2 {
+			//取得料號
+			goodsSn := dirCutArr[0]
+			//料號前兩碼
+			twoCode := fmt.Sprintf("%v", TryMap[goodsSn[0:2]])
 
-					if hasA {
-						indexNext = imageIndex2 + 1
-					} else {
-						indexNext = imageIndex2
-					}
+			//小圖路徑
+			var smallPath = DirPath + string(os.PathSeparator) + fileDir + string(os.PathSeparator) + SmallPath
+			//創建料號資料夾
+			tvMallChildDir := mkOutOrg + string(os.PathSeparator) + goodsSn
+			mkDir(tvMallChildDir)
 
-					if inSideImageArr[0] == "A.jpg" || inSideImageArr[0] == "B.jpg" || inSideImageArr[0] == "C.jpg" || inSideImageArr[0] == "a.jpg" || inSideImageArr[0] == "b.jpg" || inSideImageArr[0] == "c.jpg" {
-						indexNext = imageIndex2
-					}
-
-					if fileImage == "A.jpg" || fileImage == "B.jpg" || fileImage == "C.jpg" || fileImage == "a.jpg" || fileImage == "b.jpg" || fileImage == "c.jpg" {
-						copyTo1 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy1 + "1.jpg"
-						copyTo2 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_1.jpg"
-						copyTo3 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy3 + ".jpg"
-						needFillArr = append(needFillArr, copyTo1)
-						//needFillArr = append(needFillArr, copyTo2)
-					} else {
-
-						copyTo1 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy1 + strconv.Itoa(indexNext) + ".jpg"
-						copyTo2 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_" + strconv.Itoa(indexNext) + ".jpg"
-						copyTo3 = ""
-					}
-					needToSize1000T1040 = append(needToSize1000T1040, copyTo2)
-					if (indexNext) <= obj.Copy1Max || fileImage == "A.jpg" || fileImage == "B.jpg" || fileImage == "C.jpg" || fileImage == "a.jpg" || fileImage == "b.jpg" || fileImage == "c.jpg" {
-						CopyFile(level2ImgDir, copyTo1)
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo1)
-					}
-					CopyFile(level2ImgDir, copyTo2)
-					fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo2)
-					if copyTo3 != "" {
-						CopyFile(level2ImgDir, copyTo3)
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo3)
-					}
-					imageIndex2++
-				}
+			//尺寸表圖路徑
+			sizePicPath := SizeTablePath + string(os.PathSeparator) + goodsSn[0:2] + goodsSn[4:8] + ".jpg"
+			if _, err := os.Stat(sizePicPath); os.IsNotExist(err) {
+				sizePicInfoArray = append(sizePicInfoArray, sizePicPath)
+			} else {
+				fmt.Println(smallPath + string(os.PathSeparator) + goodsSn[0:2] + goodsSn[4:8] + ".jpg")
+				fmt.Println(sizePicPath)
+				CopyFile(sizePicPath, tvMallChildDir+string(os.PathSeparator)+"尺寸表.jpg")
 			}
 
-			if strings.Index(fileDir, "OUT") == -1 {
-				styleNoPath := SpecPath + string(os.PathSeparator) + fileDir[0:2] + fileDir[4:8] + ".jpg"
-				storyPath := SpecPath + string(os.PathSeparator) + obj.Story
-				copyTo1 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy1 + strconv.Itoa(imageIndex2) + ".jpg"
-				copyTo2 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_" + strconv.Itoa(imageIndex2) + ".jpg"
-				copyToStory = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_" + strconv.Itoa(imageIndex2+1) + ".jpg"
-				if (imageIndex2) <= obj.Copy1Max {
-					err3 := CopyFile(styleNoPath, copyTo1)
-					if err3 != nil {
-						fmt.Printf("複製圖片 %s ， 到 %s 失敗!!\n", styleNoPath, copyTo1)
-					} else {
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", styleNoPath, copyTo1)
-					}
-				}
-				err4 := CopyFile(styleNoPath, copyTo2)
-				err5 := CopyFile(storyPath, copyToStory)
-				needToSize1000T1040 = append(needToSize1000T1040, copyToStory)
-				needToSize1000T1040 = append(needToSize1000T1040, copyTo2)
-				if err4 != nil || err5 != nil {
-					fmt.Printf("複製圖片 %s ， 到 %s 失敗!!\n", styleNoPath, copyTo2)
-					fmt.Printf("複製圖片 %s ， 到 %s 失敗!!\n", storyPath, copyToStory)
-					if err5 != nil {
-						failSizeTable = append(failSizeTable, "品牌故事:"+storyPath+"失敗\n")
-					} else {
-						failSizeTable = append(failSizeTable, "複製尺寸表:"+styleNoPath+"失敗\n")
-					}
+			//大B圖路徑
+			// bigPicPath := BigBannerPath + string(os.PathSeparator) + goodsSn[0:2] + goodsSn[4:8] + ".jpg"
+			// if _, err := os.Stat(bigPicPath); os.IsNotExist(err) {
+			// 	bigPicInfoArray = append(bigPicInfoArray, bigPicPath)
+			// } else {
+			// 	CopyFile(bigPicPath, smallPath+string(os.PathSeparator)+goodsSn[0:2]+goodsSn[4:8]+".jpg")
+			// }
 
-				} else {
-					fmt.Printf("複製尺寸表 %s\n", styleNoPath+".jpg")
-					fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", styleNoPath, copyTo2)
-					fmt.Printf("品牌故事 %s\n", storyPath+".jpg")
-					fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", storyPath, copyToStory)
-				}
-				BeginCount++
-				//imageIndex++
-				if BeginCount > MaxCount {
-					newbegin, _ := strconv.Atoi(obj.BeginCount)
-					BeginCount = newbegin
-					//imageIndex = 1
-					group++
-				}
+			//試穿表路徑
+			tryPicPath := TryTablePath + string(os.PathSeparator) + twoCode
+			if _, err := os.Stat(tryPicPath); os.IsNotExist(err) {
+				tryPicInfoArray = append(tryPicInfoArray, tryPicPath)
+			} else {
+				CopyFile(tryPicPath, tvMallChildDir+string(os.PathSeparator)+"試穿表.jpg")
 			}
-			//os.Exit(3)
-		} else {
-			if strings.Index(fileDir, ".jpg") > -1 {
-				array := strings.Split(fileDir, "_")
-				//keepGoodsSn[array[0]] = append(keepGoodsSn[array[0]], fileDir)
-				if nowString != array[0] {
-					nowString = array[0]
-					test1Darray = append(test1Darray, nowString)
-					if InStringSlice(XXLArray, array[0]) {
-						xxlTest1DArray = append(xxlTest1DArray, array[0])
-					}
+
+			//掃描小圖 資料夾
+			smallPicDirArray := scandir(smallPath)
+			//fmt.Println(smallPicDirArray)
+			for index, picDir := range smallPicDirArray {
+				orgSmallPicPath := smallPath + string(os.PathSeparator) + picDir
+				CopySmallPicPath := tvMallChildDir + string(os.PathSeparator) + "(" + strconv.Itoa(index+1) + ").jpg"
+				CopyFile(orgSmallPicPath, CopySmallPicPath)
+				if index == 0 {
+					CopySmallPicPath = tvMallChildDir + string(os.PathSeparator) + "列表.jpg"
+					CopyFile(orgSmallPicPath, CopySmallPicPath)
+					CopySmallPicPath = tvMallChildDir + string(os.PathSeparator) + "250X250.jpg"
+					CopyFile(orgSmallPicPath, CopySmallPicPath)
+					needResize = append(needResize, CopySmallPicPath)
 				}
 			}
 		}
 	}
 
-	if runType == 1 {
-		for _, goodsSn := range test1Darray {
-			var test2Array []string
-			for _, fileDir := range dirArr {
-				if strings.Index(fileDir, goodsSn) > -1 {
-					test2Array = append(test2Array, fileDir)
-				}
-			}
-			keepGoodsSn = append(keepGoodsSn, test2Array)
-		}
-
-		if len(keepGoodsSn) > 0 {
-			for _, snArr := range keepGoodsSn {
-				mkOut := obj.NewWorkPath + string(os.PathSeparator) + obj.Leve3Dir + string(os.PathSeparator) + obj.GroupDir + strconv.Itoa(group)
-				mkDir(mkOut)
-				imageIndex2 := 1
-				for _, imagePath := range snArr {
-					copyTo1 := ""
-					copyTo2 := ""
-					copyTo3 := ""
-
-					level2ImgDir := obj.NewWorkPath + string(os.PathSeparator) + obj.Leve3Dir + string(os.PathSeparator) + imagePath
-					if strings.Index(imagePath, "_01.") > -1 || strings.Index(imagePath, "A.") > -1 || strings.Index(imagePath, "B.") > -1 || strings.Index(imagePath, "C.") > -1 {
-						copyTo1 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy1 + "1.jpg"
-						copyTo2 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_1.jpg"
-						copyTo3 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy3 + ".jpg"
-						needFillArr = append(needFillArr, copyTo1)
-						imageIndex2--
-						//needFillArr = append(needFillArr, copyTo2)
-					} else {
-						copyTo1 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy1 + strconv.Itoa(imageIndex2+1) + ".jpg"
-						copyTo2 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_" + strconv.Itoa(imageIndex2+1) + ".jpg"
-						copyTo3 = ""
-					}
-					needToSize1000T1040 = append(needToSize1000T1040, copyTo2)
-					if (imageIndex2+1) <= obj.Copy1Max || (strings.Index(imagePath, "01.") > -1 || strings.Index(imagePath, "A.") > -1 || strings.Index(imagePath, "B.") > -1 || strings.Index(imagePath, "C.") > -1) {
-						CopyFile(level2ImgDir, copyTo1)
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo1)
-					}
-					CopyFile(level2ImgDir, copyTo2)
-					fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo2)
-
-					if copyTo3 != "" {
-						CopyFile(level2ImgDir, copyTo3)
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo3)
-					}
-					imageIndex2++
-				}
-
-				storyPath := SpecPath + string(os.PathSeparator) + obj.Story
-				copyToStory := mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_" + strconv.Itoa(imageIndex2+1) + ".jpg"
-				needToSize1000T1040 = append(needToSize1000T1040, copyToStory)
-				err3 := CopyFile(storyPath, copyToStory)
-				if err3 != nil {
-					fmt.Printf("複製圖片 %s ， 到 %s 失敗!!\n", storyPath, copyToStory)
-					failSizeTable = append(failSizeTable, "品牌故事:"+storyPath+"失敗\n")
-				} else {
-					fmt.Printf("品牌故事 %s\n", storyPath+".jpg")
-					fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", storyPath, copyToStory)
-				}
-				BeginCount++
-				//imageIndex++
-				if BeginCount > MaxCount {
-					newbegin, _ := strconv.Atoi(obj.BeginCount)
-					BeginCount = newbegin
-					imageIndex = 1
-					group++
-				}
-			}
-
+	//做resize
+	if len(needResize) > 0 {
+		bgImg := config.BlankImg
+		for _, resizeImgPath := range needResize {
+			fmt.Println(resizeImgPath)
+			resizeImg(resizeImgPath, resizeImgPath, 250)
+			meragePic(bgImg, resizeImgPath, resizeImgPath)
 		}
 	}
-
-	if len(XXLArray) > 0 {
-
-		BeginCount, _ = strconv.Atoi(obj.BeginCount)
-		MaxCount, _ = strconv.Atoi(obj.MaxCount)
-		imageIndex = 1
-		xxl := 1
-
-		if runType == 0 {
-			for _, pathName := range XXLArray {
-				level1Dir := obj.WorkPath + string(os.PathSeparator) + pathName
-				if _, err := os.Stat(level1Dir); os.IsNotExist(err) {
-					continue
-				}
-				mkOut := mkOutOrg + string(os.PathSeparator) + obj.XXLDir + strconv.Itoa(xxl)
-				mkDir(mkOut)
-				inSideImageArr := scandir(level1Dir)
-				copyTo1 := ""
-				copyTo2 := ""
-				copyTo3 := ""
-				imageIndex2 := 1
-				level2ImgDir := ""
-				copyToStory := ""
-				indexNext := 0
-				hasA := false
-				for _, fileImage := range inSideImageArr {
-					if fileImage == "A.jpg" || fileImage == "B.jpg" || fileImage == "C.jpg" || fileImage == "a.jpg" || fileImage == "b.jpg" || fileImage == "c.jpg" {
-						hasA = true
-					}
-				}
-
-				for _, fileImage := range inSideImageArr {
-					if strings.Index(fileImage, ".jpg") > -1 {
-						level2ImgDir = level1Dir + string(os.PathSeparator) + fileImage
-
-						if hasA {
-							indexNext = imageIndex2 + 1
-						} else {
-							indexNext = imageIndex2
-						}
-						if inSideImageArr[0] == "A.jpg" || inSideImageArr[0] == "B.jpg" || inSideImageArr[0] == "C.jpg" || inSideImageArr[0] == "a.jpg" || inSideImageArr[0] == "b.jpg" || inSideImageArr[0] == "c.jpg" {
-							indexNext = imageIndex2
-						}
-
-						if fileImage == "A.jpg" || fileImage == "B.jpg" || fileImage == "C.jpg" || fileImage == "a.jpg" || fileImage == "b.jpg" || fileImage == "c.jpg" {
-							copyTo1 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy1 + "1.jpg"
-							copyTo2 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_1.jpg"
-							copyTo3 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy3 + ".jpg"
-							needFillArr = append(needFillArr, copyTo1)
-							//needFillArr = append(needFillArr, copyTo2)
-						} else {
-							copyTo1 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy1 + strconv.Itoa(indexNext) + ".jpg"
-							copyTo2 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_" + strconv.Itoa(indexNext) + ".jpg"
-							copyTo3 = ""
-						}
-						needToSize1000T1040 = append(needToSize1000T1040, copyTo2)
-						if (indexNext) <= obj.Copy1Max || fileImage == "A.jpg" || fileImage == "B.jpg" || fileImage == "C.jpg" || fileImage == "a.jpg" || fileImage == "b.jpg" || fileImage == "c.jpg" {
-							CopyFile(level2ImgDir, copyTo1)
-							fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo1)
-						}
-						CopyFile(level2ImgDir, copyTo2)
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo2)
-						if copyTo3 != "" {
-							CopyFile(level2ImgDir, copyTo3)
-							fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo3)
-						}
-						imageIndex2++
-					}
-				}
-
-				if strings.Index(pathName, "OUT") == -1 {
-					styleNoPath := SpecPath + string(os.PathSeparator) + pathName[0:2] + pathName[4:8] + ".jpg"
-					storyPath := SpecPath + string(os.PathSeparator) + obj.Story
-
-					copyTo2 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_" + strconv.Itoa(imageIndex2) + ".jpg"
-					copyToStory = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_" + strconv.Itoa(imageIndex2+1) + ".jpg"
-
-					if (imageIndex2) <= obj.Copy1Max {
-						copyTo1 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy1 + strconv.Itoa(imageIndex2) + ".jpg"
-						err3 := CopyFile(styleNoPath, copyTo1)
-						if err3 != nil {
-							fmt.Printf("複製圖片 %s ， 到 %s 失敗!!\n", styleNoPath, copyTo1)
-						} else {
-							fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", styleNoPath, copyTo1)
-						}
-					}
-
-					err4 := CopyFile(styleNoPath, copyTo2)
-					err5 := CopyFile(storyPath, copyToStory)
-					needToSize1000T1040 = append(needToSize1000T1040, copyTo2)
-					needToSize1000T1040 = append(needToSize1000T1040, copyToStory)
-					if err4 != nil || err5 != nil {
-						fmt.Printf("複製圖片 %s ， 到 %s 失敗!!\n", styleNoPath, copyTo1)
-						fmt.Printf("複製圖片 %s ， 到 %s 失敗!!\n", styleNoPath, copyTo2)
-						fmt.Printf("複製圖片 %s ， 到 %s 失敗!!\n", storyPath, copyToStory)
-						if err5 != nil {
-							failSizeTable = append(failSizeTable, "品牌故事:"+storyPath+"失敗\n")
-						} else {
-							failSizeTable = append(failSizeTable, "複製尺寸表:"+styleNoPath+"失敗\n")
-						}
-
-					} else {
-						fmt.Printf("複製尺寸表 %s\n", styleNoPath+".jpg")
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", styleNoPath, copyTo1)
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", styleNoPath, copyTo2)
-						fmt.Printf("品牌故事 %s\n", storyPath+".jpg")
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", storyPath, copyToStory)
-					}
-					BeginCount++
-					//imageIndex++
-					if BeginCount > MaxCount {
-						newbegin, _ := strconv.Atoi(obj.BeginCount)
-						BeginCount = newbegin
-						imageIndex = 1
-						xxl++
-					}
-				}
-			}
-		} else {
-			var keepXXlGoodsSn [][]string
-			for _, goodsSn := range xxlTest1DArray {
-				var test2Array []string
-				for _, fileDir := range dirArr {
-					if strings.Index(fileDir, goodsSn) > -1 {
-						test2Array = append(test2Array, fileDir)
-					}
-				}
-				keepXXlGoodsSn = append(keepXXlGoodsSn, test2Array)
-			}
-			if len(keepXXlGoodsSn) > 0 {
-				for _, snArr := range keepXXlGoodsSn {
-					mkOut := obj.NewWorkPath + string(os.PathSeparator) + obj.Leve3Dir + string(os.PathSeparator) + obj.XXLDir + strconv.Itoa(xxl)
-					mkDir(mkOut)
-					imageIndex2 := 1
-					for _, imagePath := range snArr {
-						copyTo1 := ""
-						copyTo2 := ""
-						copyTo3 := ""
-						level2ImgDir := obj.NewWorkPath + string(os.PathSeparator) + obj.Leve3Dir + string(os.PathSeparator) + imagePath
-						if strings.Index(imagePath, "_01.") > -1 || strings.Index(imagePath, "A.") > -1 || strings.Index(imagePath, "B.") > -1 || strings.Index(imagePath, "C.") > -1 {
-							copyTo1 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy1 + "1.jpg"
-							copyTo2 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_1.jpg"
-							copyTo3 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy3 + ".jpg"
-							needFillArr = append(needFillArr, copyTo1)
-							imageIndex2--
-							//needFillArr = append(needFillArr, copyTo2)
-						} else {
-							copyTo1 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy1 + strconv.Itoa(imageIndex2+1) + ".jpg"
-							copyTo2 = mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_" + strconv.Itoa(imageIndex2+1) + ".jpg"
-							copyTo3 = ""
-						}
-						needToSize1000T1040 = append(needToSize1000T1040, copyTo2)
-						if (imageIndex2) <= obj.Copy1Max {
-							CopyFile(level2ImgDir, copyTo1)
-							fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo1)
-						}
-						CopyFile(level2ImgDir, copyTo2)
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo2)
-						if copyTo3 != "" {
-							CopyFile(level2ImgDir, copyTo3)
-							fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", level2ImgDir, copyTo3)
-						}
-						imageIndex2++
-					}
-
-					storyPath := SpecPath + string(os.PathSeparator) + obj.Story
-					copyToStory := mkOut + string(os.PathSeparator) + strconv.Itoa(BeginCount) + "_" + obj.Copy2 + "_" + strconv.Itoa(imageIndex) + "_" + strconv.Itoa(imageIndex2+1) + ".jpg"
-
-					err3 := CopyFile(storyPath, copyToStory)
-					needToSize1000T1040 = append(needToSize1000T1040, copyToStory)
-					if err3 != nil {
-						fmt.Printf("複製圖片 %s ， 到 %s 失敗!!\n", storyPath, copyToStory)
-						failSizeTable = append(failSizeTable, "品牌故事:"+storyPath+"失敗\n")
-					} else {
-						fmt.Printf("品牌故事 %s\n", storyPath+".jpg")
-						fmt.Printf("複製圖片 %s ， 到 %s 成功!!\n", storyPath, copyToStory)
-					}
-					BeginCount++
-					//imageIndex++
-					if BeginCount > MaxCount {
-						newbegin, _ := strconv.Atoi(obj.BeginCount)
-						BeginCount = newbegin
-						imageIndex = 1
-						xxl++
-					}
-				}
-
-			}
-		}
-	}
-
-	var txtString string
-	if len(failSizeTable) > 0 {
-		for _, errorMsg := range failSizeTable {
-			txtString = txtString + errorMsg
-		}
-		content := []byte(txtString)
-		err := ioutil.WriteFile("log.txt", content, 0666)
-		if err != nil {
-			fmt.Println("ioutil WriteFile error: ", err)
-		}
-	}
-
-	txtString = ""
-
-	if len(needFillArr) > 0 {
-		for _, fillPath := range needFillArr {
-			txtString = txtString + fillPath + ";\n"
-		}
-		fmt.Println(txtString)
-		content := []byte(txtString)
-		err := ioutil.WriteFile(".\\needFill.txt", content, 0777)
-		if err != nil {
-			fmt.Println("ioutil WriteFile error: ", err)
-		}
-	}
-	txtString = ""
-
-	if len(needToSize1000T1040) > 0 {
-		for _, fillPath := range needToSize1000T1040 {
-			txtString = txtString + fillPath + ";\n"
-		}
-		fmt.Println(txtString)
-		content := []byte(txtString)
-		err := ioutil.WriteFile(".\\needToSize1000T1040.txt", content, 0777)
-		if err != nil {
-			fmt.Println("ioutil WriteFile error: ", err)
-		}
-	}
-
-	fmt.Println("執行完成")
-	fmt.Scanln()
 }
 
 //掃描資料夾底下檔案
@@ -523,21 +153,6 @@ func scandir(dir string) []string {
 	return files
 }
 
-func readXXlFile(XXLFilePath string) []string {
-	var content []string
-	f, err := os.Open(XXLFilePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		content = append(content, scanner.Text())
-	}
-	return content
-}
-
-//byte 轉 string
 func BytesToString(data []byte) string {
 	return string(data[:])
 }
@@ -633,7 +248,6 @@ func InStringSlice(haystack []string, needle string) bool {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -641,4 +255,81 @@ func dd(data string) (err error) {
 	fmt.Println(data)
 	os.Exit(3)
 	return
+}
+
+func resizeImg(imgPath string, outPath string, change int) {
+	file, err := os.Open(imgPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// decode jpeg into image.Image
+	img, err := jpeg.Decode(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	file.Close()
+
+	width := img.Bounds().Dx()  //
+	height := img.Bounds().Dy() //
+
+	// fmt.Println(width)
+	// fmt.Println(height)
+	// os.Exit(3)
+	if width > height {
+		width = change
+		height = 0
+	} else {
+		width = 0
+		height = change
+	}
+
+	m := resize.Resize(uint(width), uint(height), img, resize.Lanczos3)
+	out, err := os.Create(outPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer out.Close()
+
+	jpeg.Encode(out, m, &jpeg.Options{Quality: 100})
+}
+
+func meragePic(bgPath string, topPath string, outPath string) {
+
+	file, err := os.Open(topPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// decode jpeg into image.Image
+	img, err := jpeg.Decode(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	file.Close()
+
+	width := (250 - img.Bounds().Dx()) / 2 //
+	grids := []*gim.Grid{
+		{
+			ImageFilePath:   bgPath,
+			BackgroundColor: color.White,
+			// these grids will be drawn on top of the first grid
+			Grids: []*gim.Grid{
+				{
+					ImageFilePath: topPath,
+					OffsetX:       width, OffsetY: 0,
+				},
+			},
+		},
+	}
+	rgba, err := gim.New(grids, 1, 1).Merge()
+	if err != nil {
+		log.Fatal(err)
+	}
+	// save the output to jpg or png
+	file, err2 := os.Create(outPath)
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+	err = jpeg.Encode(file, rgba, &jpeg.Options{Quality: 100})
 }
