@@ -21,11 +21,13 @@ type config struct {
 	WorkPath      string                 `json:"WorkPath"`
 	SizeTablePath string                 `json:"SizeTablePath"`
 	TryTablePath  string                 `json:"TryTablePath"`
-	BigBannerPath string                 `json:"BigBannerPath"`
 	GetDir        string                 `json:"GetDir"`
 	Leve3Dir      string                 `json:"Leve3Dir"`
 	BlankImg      string                 `json:"BlankImg"`
 	TryMapping    map[string]interface{} `json:"TryMapping"`
+	TryPicName    string                 `json:"TryPicName"`
+	ListPicName   string                 `json:"ListPicName"`
+	SizePicName   string                 `json:"SizePicName"`
 }
 
 func main() {
@@ -46,12 +48,16 @@ func main() {
 
 	//創建資料夾路徑
 	var mkOutOrg = config.WorkPath + string(os.PathSeparator) + config.Leve3Dir
+	//試穿表json名稱讀取
+	var tryPicName = config.TryPicName
+	//列表圖json名稱讀取
+	var ListPicName = config.ListPicName
+	//尺寸圖json名稱讀取
+	var SizePicName = config.SizePicName
 	//取代反斜線
 	var DirPath = strings.Replace(config.WorkPath, "\\", "\\\\", -1)
 	//尺寸表路徑 (用款號組成)
 	var SizeTablePath = strings.Replace(config.SizeTablePath, "\\", "\\\\", -1)
-	//大B圖路徑 (用款號組成)
-	var BigBannerPath = strings.Replace(config.BigBannerPath, "\\", "\\\\", -1)
 	//試穿表路徑 (用料號前兩個字)
 	var TryTablePath = strings.Replace(config.TryTablePath, "\\", "\\\\", -1)
 	//試穿表對應圖片
@@ -67,7 +73,6 @@ func main() {
 	//需要縮放圖片位子陣列
 	var needResize []string
 	var sizePicInfoArray []string
-	// var bigPicInfoArray []string
 	var tryPicInfoArray []string
 	for _, fileDir := range dirArr {
 
@@ -92,7 +97,7 @@ func main() {
 			} else {
 				fmt.Println(smallPath + string(os.PathSeparator) + goodsSn[0:2] + goodsSn[4:8] + ".jpg")
 				fmt.Println(sizePicPath)
-				CopyFile(sizePicPath, tvMallChildDir+string(os.PathSeparator)+"尺寸表.jpg")
+				CopyFile(sizePicPath, tvMallChildDir+string(os.PathSeparator)+SizePicName+".jpg")
 			}
 
 			//試穿表路徑
@@ -100,31 +105,22 @@ func main() {
 			if _, err := os.Stat(tryPicPath); os.IsNotExist(err) {
 				tryPicInfoArray = append(tryPicInfoArray, tryPicPath)
 			} else {
-				CopyFile(tryPicPath, tvMallChildDir+string(os.PathSeparator)+"試穿表.jpg")
+				CopyFile(tryPicPath, tvMallChildDir+string(os.PathSeparator)+tryPicName+".jpg")
 			}
 
 			//掃描小圖 資料夾
 			smallPicDirArray := scandir(smallPath)
-			//大B圖路徑 資料夾
-			BigBannerDirArray := scandir(BigBannerPath)
 			//fmt.Println(smallPicDirArray)
 			for index, picDir := range smallPicDirArray {
 				orgSmallPicPath := smallPath + string(os.PathSeparator) + picDir
 				CopySmallPicPath := tvMallChildDir + string(os.PathSeparator) + "(" + strconv.Itoa(index+1) + ").jpg"
 				CopyFile(orgSmallPicPath, CopySmallPicPath)
 				if index == 0 {
-					CopySmallPicPath = tvMallChildDir + string(os.PathSeparator) + "列表.jpg"
+					CopySmallPicPath = tvMallChildDir + string(os.PathSeparator) + ListPicName + ".jpg"
 					CopyFile(orgSmallPicPath, CopySmallPicPath)
 					CopySmallPicPath = tvMallChildDir + string(os.PathSeparator) + "250X250.jpg"
 					CopyFile(orgSmallPicPath, CopySmallPicPath)
 					needResize = append(needResize, CopySmallPicPath)
-				}
-			}
-			if len(BigBannerDirArray) > 0 {
-				for index, bannerPic := range BigBannerDirArray {
-					orgBannerPicPath := BigBannerPath + string(os.PathSeparator) + bannerPic
-					CopyBannerPicPath := tvMallChildDir + string(os.PathSeparator) + "BANNER" + strconv.Itoa(index+1) + ".jpg"
-					CopyFile(orgBannerPicPath, CopyBannerPicPath)
 				}
 			}
 		}
