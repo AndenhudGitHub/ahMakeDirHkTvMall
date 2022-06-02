@@ -74,11 +74,20 @@ func main() {
 	var needResize []string
 	var sizePicInfoArray []string
 	var tryPicInfoArray []string
+
+	fmt.Println("掃描路徑: ", dirArr)
+
 	for _, fileDir := range dirArr {
 
 		//切割資料夾變成陣列
 		dirCutArr := strings.Split(fileDir, "_")
-		if len(dirCutArr) == 2 {
+
+		fmt.Println("陣列大小: ", len(dirCutArr))
+
+		if len(dirCutArr) >= 2 {
+
+			fmt.Println("切割完: ", dirCutArr)
+
 			//取得料號
 			goodsSn := dirCutArr[0]
 			//料號前兩碼
@@ -86,12 +95,17 @@ func main() {
 
 			//小圖路徑
 			var smallPath = DirPath + string(os.PathSeparator) + fileDir + string(os.PathSeparator) + SmallPath
+
+			fmt.Println("小圖路徑: ", smallPath)
 			//創建料號資料夾
 			tvMallChildDir := mkOutOrg + string(os.PathSeparator) + goodsSn
+			fmt.Println("創建料號資料夾: ", tvMallChildDir)
 			mkDir(tvMallChildDir)
 
 			//尺寸表圖路徑
 			sizePicPath := SizeTablePath + string(os.PathSeparator) + goodsSn[0:2] + goodsSn[4:8] + ".jpg"
+			fmt.Println("抓取尺寸表圖片路徑: ", sizePicPath)
+
 			if _, err := os.Stat(sizePicPath); os.IsNotExist(err) {
 				sizePicInfoArray = append(sizePicInfoArray, sizePicPath)
 			} else {
@@ -200,6 +214,7 @@ func moveFile(orgPath string, movePath string) {
 func CopyFile(src, dst string) (err error) {
 	sfi, err := os.Stat(src)
 	if err != nil {
+		fmt.Println(src + "不存在!!")
 		return
 	}
 	if !sfi.Mode().IsRegular() {
