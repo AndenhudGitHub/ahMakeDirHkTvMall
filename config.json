@@ -23,7 +23,14 @@
         "B5": "TRYON_KID_01.jpg",
         "B6": "TRYON_KID_01.jpg"
     },
-    "TryPicName": "試穿表test",
-    "ListPicName": "列表test",
-    "SizePicName": "尺寸表test"
+    "TryPicName": "fit",
+    "ListPicName": "cart",
+    "SizePicName": "size",
+    "OnePackageNumber": 4,
+    "ExcelTitle": {
+        "A1": "Main photo",
+        "B1": "Other product photo",
+        "C1": "Other photo",
+        "D1": "Advertising photo"
+    }
 }

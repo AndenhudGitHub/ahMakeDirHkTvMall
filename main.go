@@ -10,24 +10,28 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/nfnt/resize"
 	gim "github.com/ozankasikci/go-image-merge"
+	"github.com/xuri/excelize"
 )
 
 type config struct {
-	WorkPath      string                 `json:"WorkPath"`
-	SizeTablePath string                 `json:"SizeTablePath"`
-	TryTablePath  string                 `json:"TryTablePath"`
-	GetDir        string                 `json:"GetDir"`
-	Leve3Dir      string                 `json:"Leve3Dir"`
-	BlankImg      string                 `json:"BlankImg"`
-	TryMapping    map[string]interface{} `json:"TryMapping"`
-	TryPicName    string                 `json:"TryPicName"`
-	ListPicName   string                 `json:"ListPicName"`
-	SizePicName   string                 `json:"SizePicName"`
+	WorkPath         string                 `json:"WorkPath"`
+	SizeTablePath    string                 `json:"SizeTablePath"`
+	TryTablePath     string                 `json:"TryTablePath"`
+	GetDir           string                 `json:"GetDir"`
+	Leve3Dir         string                 `json:"Leve3Dir"`
+	BlankImg         string                 `json:"BlankImg"`
+	TryMapping       map[string]interface{} `json:"TryMapping"`
+	TryPicName       string                 `json:"TryPicName"`
+	ListPicName      string                 `json:"ListPicName"`
+	SizePicName      string                 `json:"SizePicName"`
+	OnePackageNumber int                    `json:"OnePackageNumber"`
+	ExcelTitle       map[string]interface{} `json:"ExcelTitle"`
 }
 
 func main() {
@@ -46,8 +50,15 @@ func main() {
 		os.Exit(3)
 	}
 
+	var ExcelTitleArray = config.ExcelTitle
+	//一個dir 內要幾套圖
+	var OnePackageNumber = config.OnePackageNumber
+	//套圖計算 index
+	var beginCount = 1
+	//外層資料夾 分套圖別名
+	var outerDirCount = 1
 	//創建資料夾路徑
-	var mkOutOrg = config.WorkPath + string(os.PathSeparator) + config.Leve3Dir
+	var mkOutOrg = config.WorkPath + string(os.PathSeparator) + config.Leve3Dir + strconv.Itoa(outerDirCount)
 	//試穿表json名稱讀取
 	var tryPicName = config.TryPicName
 	//列表圖json名稱讀取
@@ -74,10 +85,26 @@ func main() {
 	var needResize []string
 	var sizePicInfoArray []string
 	var tryPicInfoArray []string
+	var mainPhoto = make(map[string]string)
+	var otherProduct = make(map[string]string)
+	var advertising = make(map[string]string)
 
-	fmt.Println("掃描路徑: ", dirArr)
+	// fmt.Println("掃描路徑: ", dirArr)
 
-	for _, fileDir := range dirArr {
+	var needUnsetDir = 0
+
+	for index, fileDir := range dirArr {
+		if fileDir == config.Leve3Dir+strconv.Itoa(outerDirCount) {
+			needUnsetDir = index
+		}
+	}
+	var Slice2 = dirArr[:needUnsetDir]
+	dirArr = Slice2
+	var dirArrLastOneIndex = len(dirArr) - 1
+	// fmt.Println(dirArr)
+	// os.Exit(3)
+
+	for fileIndex, fileDir := range dirArr {
 
 		//切割資料夾變成陣列
 		dirCutArr := strings.Split(fileDir, "_")
@@ -85,6 +112,12 @@ func main() {
 		fmt.Println("陣列大小: ", len(dirCutArr))
 
 		if len(dirCutArr) >= 2 {
+
+			if beginCount > OnePackageNumber {
+				beginCount = 1
+				outerDirCount++
+				mkOutOrg = config.WorkPath + string(os.PathSeparator) + config.Leve3Dir + strconv.Itoa(outerDirCount)
+			}
 
 			fmt.Println("切割完: ", dirCutArr)
 
@@ -98,7 +131,8 @@ func main() {
 
 			fmt.Println("小圖路徑: ", smallPath)
 			//創建料號資料夾
-			tvMallChildDir := mkOutOrg + string(os.PathSeparator) + goodsSn
+			// tvMallChildDir := mkOutOrg + string(os.PathSeparator) + goodsSn
+			tvMallChildDir := mkOutOrg + string(os.PathSeparator)
 			fmt.Println("創建料號資料夾: ", tvMallChildDir)
 			mkDir(tvMallChildDir)
 
@@ -106,12 +140,16 @@ func main() {
 			sizePicPath := SizeTablePath + string(os.PathSeparator) + goodsSn[0:2] + goodsSn[4:8] + ".jpg"
 			fmt.Println("抓取尺寸表圖片路徑: ", sizePicPath)
 
+			SizeStr := ""
+			TryStr := ""
+
 			if _, err := os.Stat(sizePicPath); os.IsNotExist(err) {
 				sizePicInfoArray = append(sizePicInfoArray, sizePicPath)
 			} else {
 				fmt.Println(smallPath + string(os.PathSeparator) + goodsSn[0:2] + goodsSn[4:8] + ".jpg")
 				fmt.Println(sizePicPath)
-				CopyFile(sizePicPath, tvMallChildDir+string(os.PathSeparator)+SizePicName+".jpg")
+				SizeStr = goodsSn + "_" + SizePicName + ".jpg"
+				CopyFile(sizePicPath, tvMallChildDir+string(os.PathSeparator)+goodsSn+"_"+SizePicName+".jpg")
 			}
 
 			//試穿表路徑
@@ -119,24 +157,81 @@ func main() {
 			if _, err := os.Stat(tryPicPath); os.IsNotExist(err) {
 				tryPicInfoArray = append(tryPicInfoArray, tryPicPath)
 			} else {
-				CopyFile(tryPicPath, tvMallChildDir+string(os.PathSeparator)+tryPicName+".jpg")
+				TryStr = goodsSn + "_" + tryPicName + ".jpg"
+				CopyFile(tryPicPath, tvMallChildDir+string(os.PathSeparator)+goodsSn+"_"+tryPicName+".jpg")
 			}
+
+			productPhoto := ""
 
 			//掃描小圖 資料夾
 			smallPicDirArray := scandir(smallPath)
 			//fmt.Println(smallPicDirArray)
 			for index, picDir := range smallPicDirArray {
 				orgSmallPicPath := smallPath + string(os.PathSeparator) + picDir
-				CopySmallPicPath := tvMallChildDir + string(os.PathSeparator) + "(" + strconv.Itoa(index+1) + ").jpg"
+				picIndex := strconv.Itoa(index + 1)
+				if (index + 1) < 10 {
+					picIndex = "0" + picIndex
+				}
+				CopySmallPicPath := tvMallChildDir + string(os.PathSeparator) + goodsSn + "_" + picIndex + ".jpg"
 				CopyFile(orgSmallPicPath, CopySmallPicPath)
+				productPhoto += goodsSn + "_" + picIndex + ".jpg,"
 				if index == 0 {
-					CopySmallPicPath = tvMallChildDir + string(os.PathSeparator) + ListPicName + ".jpg"
+					CopySmallPicPath = tvMallChildDir + string(os.PathSeparator) + goodsSn + "_" + ListPicName + ".jpg"
 					CopyFile(orgSmallPicPath, CopySmallPicPath)
-					CopySmallPicPath = tvMallChildDir + string(os.PathSeparator) + "250X250.jpg"
+
+					mainPhoto[goodsSn] = goodsSn + "_" + ListPicName + ".jpg"
+
+					CopySmallPicPath = tvMallChildDir + string(os.PathSeparator) + goodsSn + "_" + "250X250.jpg"
 					CopyFile(orgSmallPicPath, CopySmallPicPath)
 					needResize = append(needResize, CopySmallPicPath)
+					advertising[goodsSn] = goodsSn + "_" + "250X250.jpg"
 				}
 			}
+
+			productPhoto += TryStr + "," + SizeStr
+			otherProduct[goodsSn] = productPhoto
+			beginCount++
+
+			if beginCount > OnePackageNumber || fileIndex == dirArrLastOneIndex {
+
+				f := excelize.NewFile()
+				// 創建一個工作表
+				index := f.NewSheet("Sheet1")
+				// 設定活頁簿的默認工作表
+				f.SetActiveSheet(index)
+				f.SetColWidth("Sheet1", "A", "D", 30)
+				for column, value := range ExcelTitleArray {
+					f.SetCellValue("Sheet1", column, value)
+					f.SetCellValue("Sheet1", column, value)
+					f.SetCellValue("Sheet1", column, value)
+					f.SetCellValue("Sheet1", column, value)
+				}
+
+				keys := make([]string, 0, len(mainPhoto))
+				for k := range mainPhoto {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+
+				beginRows := 2
+				for _, value := range keys {
+
+					f.SetCellValue("Sheet1", "A"+strconv.Itoa(beginRows), mainPhoto[value])
+					f.SetCellValue("Sheet1", "B"+strconv.Itoa(beginRows), otherProduct[value])
+					f.SetCellValue("Sheet1", "C"+strconv.Itoa(beginRows), otherProduct[value])
+					f.SetCellValue("Sheet1", "D"+strconv.Itoa(beginRows), advertising[value])
+					beginRows++
+				}
+
+				if err := f.SaveAs(mkOutOrg + string(os.PathSeparator) + config.Leve3Dir + strconv.Itoa(outerDirCount) + ".xlsx"); err != nil {
+					fmt.Println(err)
+				}
+
+				mainPhoto = make(map[string]string)
+				otherProduct = make(map[string]string)
+				advertising = make(map[string]string)
+			}
+
 		}
 	}
 
